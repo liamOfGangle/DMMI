@@ -1,94 +1,107 @@
 %% 
-% clear variables/figures and load in data set
-clear all;
-close all;
-load qsar.mat;
-%%
-% manipulate data set
-z = D(:,11);  % place column 11 into array z
-D(:,11) = []; % remove col 11 from D
-X = D;        % rename D to X
+% clear/close any variables/figures and load qsar.mat file
+clear all
+close all
+load qsar.mat
+
+z = D(:,11);
+D(:,11) = [];
+X = D; clear D;
 %%
 % choose model building parameters
-n = floor(length(X)*0.75);   % choose sample size. 3:1 sample:oos split
-nhid = [1 5 10 15 20 25 30 35 40 45 50]; % # of HU to try
+n = floor(length(X)*(3/4)); % choose sample. 3:1 sample:oos split
+k = 5; % number of k-fold
 
-Broad = 10;
-Fine = 50;
+nhid = [4:2:16]; % array of # of HUs to try
+nhid(1) = 5;nhid(end) = 15;
 
-rho = logspace(0,1,Broad); % grid rho. Broad search between 1 and 10
+rho = logspace(0,1,50); % Broad logarray for rho between 10^0 and 10^1 with 50 equally spaced intervals
 
-k = 5;      % k for k-fold cv
 nits = 100; % number of iterations
 
 outfunc = 'logistic';
 %%
-% randomly split data into sample:oos
+% randomly split data sets into sample and oos
 [x,z,x_star,z_star] = dmrndsplit(X,z,n);
 %%
-% run through all # HUs with a broad and then fine (but still a large interval gap) rho grid search. 
-for h=1:length(nhid)
+% benchmark
+myglm = glm(size(x,2),1,outfunc);
+options=foptions;
+options(1)=1;
+options(14)=nits;
+[myglm]=glmtrain(myglm,options,x,z); % train glm
+y_star_hat=glmfwd(myglm,x_star); % evaluate oos
+figure();dmroc(z_star,y_star_hat);
+figure();dmscat(z_star,y_star_hat);
+figure();dmplotres(z_star,y_star_hat)
+figure();histfit(z_star-y_star_hat)
+%%
+% run through broad rho logspace with multiple # of HUs to determine 'best'
+% # of HUs from the intial array
+rho_HU = [];
+
+for i=1:length(nhid)
     PI = zeros(length(rho),1);
-    for i=1:length(rho)
-        options = foptions;
-        options(1) = 0;
-        options(14) = nits;
-        mymlp = mlp(size(x,2),nhid(h),1,outfunc,rho(i));
-        [y_hat,Jemp] = dmxval(mymlp,options,x,z,k);
-        PI(i) = Jemp;
+    for j=1:length(rho)
+       options = foptions;
+       options(1) = 0;
+       options(14) = nits;
+       mymlp = mlp(size(x,2),nhid(i),1,outfunc,rho(j));
+       [y_hat,Jemp] = dmxval(mymlp,options,x,z,k);
+       PI(j) = Jemp;
     end
-    
+
     idx = find(PI == min(PI));
     rho_min = rho(idx);
-    
-    % closest integer values based off the broad minimum search
+
     Min = log(floor(rho_min))/log(10);
     Max = log(ceil(rho_min))/log(10);
-    rho = logspace(Min,Max,Fine); % finer search between Min and Max integers
-    
+    rho = logspace(Min,Max,100); % finer search with smaller intervals between Min and Max
+
     PI = zeros(length(rho),1);
-    for i=1:length(rho)
+    for j=1:length(rho)
         options = foptions;
         options(1) = 0;
         options(14) = nits;
-        mymlp = mlp(size(x,2),nhid(h),1,outfunc,rho(i));
+        mymlp = mlp(size(x,2),nhid(i),1,outfunc,rho(j));
         [y_hat,Jemp] = dmxval(mymlp,options,x,z,k);
-        PI(i) = Jemp;
+        PI(j) = Jemp;
     end
     
-    idx = find(PI == min(PI));
-    
-    C = [PI(idx),rho(idx),nhid(h)];
-    min_check = vertcat(min_check,C);
-    
-    rho_min = rho(idx);
-    
-    % retrain using rho_min;
+    temp = [rho_min,nhid(i)];
+    rho_HU = vertcat(rho_HU,temp);
+end
+%%
+% split rho_HU into rho_min and HU
+rho_min = rho_HU(:,1);nhid = rho_HU(:,2);
+%%
+% retrain using rho_min
+yValues = [];
+PI = zeros(length(rho),1);
+for i=1:length(rho_min)
     options=foptions; % initialize options
     options(1)=0; % set "silent"
     options(14)=nits; % ensure enough iterations allowed
-    mymlp=mlp(size(x,2),nhid(h),1,outfunc,rho_min); % initialize mymlp
+    mymlp=mlp(size(x,2),nhid(i),1,outfunc,rho_min(i)); % initialize mymlp
     [mymlp,options]=mlptrain(mymlp,options,x,z); % train mlp
     y_hat=mlpfwd(mymlp,x); % evaluate on TRAINING sample
     y_star_hat=mlpfwd(mymlp,x_star); % evaluate oos
-    
-    disp(['value of PI after re-training = ' num2str(options(8))])
-    figure(h);dmroc(z_star,y_star_hat)
-    
-    D = [options(8),nhid(h)];
-    min_retrain = vertcat(min_retrain,D);
+    mlp_arr(i) = mymlp;
+    yValues = horzcat(yValues,y_star_hat);
+    PI_arr(i) = options(8);
 end
-
-
-
-
-
-
-
-
-    
-    
-    
-    
-    
-    
+%%
+% choose best model based off of minimum PI
+idx = find(PI_arr == min(PI_arr));
+y_star_hat = yValues(:,idx);
+mymlp = mlp_arr(idx);
+%%
+% plot graphs
+disp(['value of PI after re-training = ' num2str(PI_arr(idx))]);
+figure();dmroc(z_star,y_star_hat)
+figure();dmscat(z_star,y_star_hat);
+figure();dmplotres(z_star,y_star_hat)
+figure();histfit(z_star-y_star_hat)
+%%
+% save models, x_star and z_star
+save dm150153458 myglm mymlp x_star z_star
