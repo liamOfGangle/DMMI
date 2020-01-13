@@ -1,3 +1,9 @@
+%%
+%
+% Written and tested on MATLAB 2019b
+% Some functions provided by Professor Rob Harrison
+%
+%
 %% 
 % clear/close any variables/figures and load qsar.mat file
 clear all
@@ -76,7 +82,7 @@ for i=1:length(nhid) % run through nhid array
     
     idx = find(PI == min(PI)); % find the index location of the minimum performance indicator
     rho_min = rho(idx); % find the rho at that index location
-    
+    PI_pretrain(i) = PI(idx); % place PI pretraining into an array to compare with post training PIs 
     % place the rho_min for that # of HUs into an array 
     temp = [rho_min,nhid(i)];
     rho_HU = vertcat(rho_HU,temp);
@@ -108,8 +114,8 @@ mymlp = mlp_arr(idx); % pick mlp model with best PI
 %%
 % plot graphs
 disp(['value of PI after re-training = ' num2str(PI_arr(idx))]);
-figure();dmroc(z_star,y_star_hat)
-figure();dmscat(z_star,y_star_hat);
+figure();dmroc(z_star,y_star_hat) % AUROC graph
+figure();dmscat(z_star,y_star_hat); 
 figure();dmplotres(z_star,y_star_hat)
 figure();histfit(z_star-y_star_hat)
 %%
