@@ -10,14 +10,14 @@ clear all
 close all
 load qsar.mat
 
-% split data into output z and input matrix D
-z = D(:,11);
-D(:,11) = [];
+% split data into output z and input matrix X
+z = D(:,end);
+D(:,end) = [];
 X = D; clear D;
 %%
 % choose model building parameters
 n = floor(length(X)*(3/4)); % choose sample. 3:1 sample:oos split
-k = 5; % number of k-fold
+k = 5; % number of k-fold cross validations
 
 % create an array of number of hidden units - [5 6 8 10 12 14 15]
 nhid = (4:2:16); % array of # of HUs to try 
